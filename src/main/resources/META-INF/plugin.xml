@@ -8,13 +8,15 @@
     <!-- Product and plugin compatibility requirements -->
     <!-- https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
-    <depends>JavaScript</depends>
+	<depends>com.intellij.modules.ultimate</depends>
+	<depends>JavaScript</depends>
     <depends>NodeJS</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <configurationType implementation="org.zhangwenqing.jetbrains.execution.WdioConfigurationType"/>
+		<runConfigurationProducer implementation="org.zhangwenqing.jetbrains.execution.WdioRunConfigurationProducer"
+								  order="first"/>
         <programRunner implementation="org.zhangwenqing.jetbrains.execution.WdioRunProgramRunner"/>
-        <runConfigurationProducer implementation="org.zhangwenqing.jetbrains.execution.WdioRunConfigurationProducer"/>
     </extensions>
 
 </idea-plugin>

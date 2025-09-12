@@ -1,128 +1,167 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.text.SimpleDateFormat
+import java.util.*
 
-buildscript {
-	repositories {
-//		// use Aliyun mirror to resolve network issue in China
-//		maven("https://maven.aliyun.com/repository/public")
-		mavenCentral()
-		maven("https://dl.bintray.com/jetbrains/intellij-plugin-service")
-	}
+plugins {    // gradle-intellij-plugin - read more: https://github.com/JetBrains/gradle-intellij-plugin
+	id("org.jetbrains.intellij.platform") version "2.9.0"
+	id("org.jetbrains.changelog") version "2.2.0"    // Java support
+	java    // Kotlin support
+	kotlin("jvm") version "2.2.0"
 }
 
-plugins {
-	// gradle-intellij-plugin - read more: https://github.com/JetBrains/gradle-intellij-plugin
-	id("org.jetbrains.intellij") version "1.12.0"
-	// gradle-changelog-plugin - read more: https://github.com/JetBrains/gradle-changelog-plugin
-	id("org.jetbrains.changelog") version "2.0.0"
-	// Java support
-	java
-	// Kotlin support
-	kotlin("jvm") version "1.8.0"
-}
+val isProductionBuild = project.hasProperty("productionBuild")
+val timestamp by lazy { SimpleDateFormat("yyyyMMdd-HHmmss").format(Date()) }
 
-fun properties(key: String) = project.findProperty(key).toString()
+fun projectProperty(key: String) = project.findProperty(key).toString()
 
-group = properties("pluginGroup")
-version = properties("pluginVersion")
+group = projectProperty("pluginGroup")
+version = if (isProductionBuild) projectProperty("pluginVersion") else "${projectProperty("pluginVersion")}-$timestamp"
 
 repositories {
-	if (!System.getenv("USE_ALI_REPO").isNullOrEmpty()) {
+	if (!System.getenv("USE_ALI_REPO").isNullOrEmpty())
+	{
 		maven {
 			setUrl("https://maven.aliyun.com/nexus/content/groups/public/")
 		}
 	}
+	maven {
+		url = uri("https://download.jetbrains.com/teamcity-repository/")
+	}
 	mavenCentral()
+	intellijPlatform {
+		defaultRepositories()
+		intellijDependencies()
+	}
 }
 
 dependencies {
 	implementation(kotlin("stdlib"))
-	testImplementation("junit", "junit", "4.12")
+	testImplementation(kotlin("test"))
+	testImplementation("org.junit.jupiter:junit-jupiter-api:5.13.4")
+	testImplementation("com.jetbrains.intellij.platform:test-framework-junit5:252.23892.409")
+	testRuntimeOnly("junit:junit:4.13.2")
+	intellijPlatform {
+		testFramework(TestFrameworkType.JUnit5)
+		bundledPlugin("com.intellij.modules.json")
+		bundledPlugin("com.intellij.modules.ultimate")
+		intellijIdeaUltimate("2025.2")
+		val bundledPlatformPlugins = projectProperty("bundledPlatformPlugins").split(',').map(String::trim).filter(String::isNotEmpty)
+		if (bundledPlatformPlugins.isNotEmpty())
+		{
+			bundledPlugins(*bundledPlatformPlugins.toTypedArray())
+		}
+	}
+}
+intellijPlatformTesting {
+	runIde
+	testIde
+	testIdeUi
+	testIdePerformance
 }
 
 // Configure gradle-intellij-plugin plugin.
 // Read more: https://github.com/JetBrains/gradle-intellij-plugin
-intellij {
-	pluginName.set(properties("pluginName"))
-	version.set(properties("platformVersion"))
-	type.set(properties("platformType")) // Target IDE Platform
-	downloadSources.set(properties("platformDownloadSources").toBoolean())
-	updateSinceUntilBuild.set(true)
+intellijPlatform {
+	pluginConfiguration {
+		name.set(if (isProductionBuild) projectProperty("pluginName") else "${projectProperty("pluginName")} Test Build $timestamp")
+	}
+	pluginVerification {
+		ides {
+			val versions = projectProperty("pluginVerifierIdeVersions")
+			  .split(',')
+			  .map(String::trim)
+			  .filter(String::isNotEmpty)
+			versions.forEach { version ->
+				create(IntelliJPlatformType.IntellijIdeaUltimate, version)
+			}
+		}
 
-	// Plugin Dependencies. Uses `platformPlugins` property from the gradle.properties file.
-	plugins.set(properties("platformPlugins").split(',').map(String::trim).filter(String::isNotEmpty))
+	}
 
 }
 
 // Configure Gradle Changelog Plugin - read more: https://github.com/JetBrains/gradle-changelog-plugin
 changelog {
 	groups.set(emptyList())
-	version.set(properties("pluginVersion"))
-	repositoryUrl.set(properties("pluginRepositoryUrl"))
+	version.set(projectProperty("pluginVersion"))
+	repositoryUrl.set(projectProperty("pluginRepositoryUrl"))
 }
+
 
 // Set the JVM language level used to build the project. Use Java 11 for 2020.3+, and Java 17 for 2022.2+.
 kotlin {
-	jvmToolchain(17)
+	jvmToolchain(21)
 }
 
+val runIdeForUiTests by intellijPlatformTesting.runIde.registering {
+	task {
+		jvmArgumentProviders += CommandLineArgumentProvider {
+			listOf(
+			  "-Drobot-server.port=8082",
+			  "-Dide.mac.message.dialogs.as.sheets=false",
+			  "-Djb.privacy.policy.text=<!--999.999-->",
+			  "-Djb.consents.confirmation.enabled=false",
+			)
+		}
+	}
+
+	plugins {
+		robotServerPlugin()
+	}
+}
 tasks {
 	wrapper {
-		gradleVersion = "7.6"
+		gradleVersion = "8.14"
+		distributionType = Wrapper.DistributionType.ALL
 	}
 
 	withType<KotlinCompile> {
-		kotlinOptions.jvmTarget = "17"
-		kotlinOptions.freeCompilerArgs = listOf("-Xjvm-default=all-compatibility")
+		compilerOptions {
+			jvmTarget.set(JvmTarget.JVM_21)
+			freeCompilerArgs.set(listOf("-Xjvm-default=all-compatibility"))
+		}
 	}
 
 	patchPluginXml {
-		version.set(properties("pluginVersion"))
-		sinceBuild.set(properties("pluginSinceBuild"))
-		untilBuild.set(properties("pluginUntilBuild"))
+		sinceBuild.set("241")
+		untilBuild.set("252.*")
 
-		// Extract the <!-- Plugin description --> section from README.md and provide for the plugin's manifest
 		val start = "<!-- Plugin description -->"
 		val end = "<!-- Plugin description end -->"
 		pluginDescription.set(
 		  file("README.md").readText().lines().run {
-				if (!containsAll(listOf(start, end)))
-				{
-					throw GradleException("Plugin description section not found in README.md:\n$start ... $end")
-				}
-				subList(indexOf(start) + 1, indexOf(end))
-			}.joinToString("\n").run { markdownToHTML(this) }
+			  if (!containsAll(listOf(start, end)))
+			  {
+				  throw GradleException("Plugin description section not found in README.md:\n$start ... $end")
+			  }
+			  subList(indexOf(start) + 1, indexOf(end))
+		  }.joinToString("\n").run { markdownToHTML(this) }
 		)
-
 		// Get the latest available change notes from the changelog file
 		changeNotes.set(provider {
 			with(changelog) {
 				renderItem(
-				  getOrNull(properties("pluginVersion")) ?: kotlin.runCatching { getLatest() }.getOrElse { getUnreleased() },
+				  getOrNull(projectProperty("pluginVersion"))
+					?: kotlin.runCatching { getLatest() }.getOrElse { getUnreleased() },
 				  Changelog.OutputType.HTML,
 				)
 			}
-		  }
-		)
+		})
+	}
+	withType<Test> {
+		useJUnitPlatform()
+
 	}
 
-	// Configure UI tests plugin
-	// Read more: https://github.com/JetBrains/intellij-ui-test-robot
-	runIdeForUiTests {
-		systemProperty("robot-server.port", "8082")
-		systemProperty("ide.mac.message.dialogs.as.sheets", "false")
-		systemProperty("jb.privacy.policy.text", "<!--999.999-->")
-		systemProperty("jb.consents.confirmation.enabled", "false")
-	}
 
-	runPluginVerifier {
-		ideVersions.set(
-		  properties("pluginVerifierIdeVersions").split(',')
-			.map(String::trim)
-			.filter(String::isNotEmpty)
-		)
-	}
+	//	runIde {
+	//		plugins.set(projectProperty("bundledPlatformPlugins").split(',').map(String::trim).filter(String::isNotEmpty))
+	//	}
 
 	signPlugin {
 		certificateChain.set(System.getenv("CERTIFICATE_CHAIN"))

@@ -24,7 +24,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.execution.ParametersListUtil
-import com.jetbrains.nodejs.mocha.execution.MochaRunProfileState.getMochaMainJsFile
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.Nullable
 import org.zhangwenqing.jetbrains.WdioUtil.FRAMEWORK_MOCHA
@@ -35,11 +34,11 @@ import java.nio.charset.StandardCharsets
 
 
 class WdioRunProfileState constructor(
-  @NotNull private val project: Project,
-  @NotNull private val runConfiguration: WdioRunConfiguration,
-  @NotNull private val env: ExecutionEnvironment,
-  @NotNull private val wdioPackage: NodePackage,
-  @NotNull val runSettings: WdioRunSettings
+	@param:NotNull private val project: Project,
+	@param:NotNull private val runConfiguration: WdioRunConfiguration,
+	@param:NotNull private val env: ExecutionEnvironment,
+	@param:NotNull private val wdioPackage: NodePackage,
+	@param:NotNull val runSettings: WdioRunSettings
 ) : NodeLocalDebuggableRunProfileStateSync()
 {
 	private var myRerunActionFailedTests: List<List<String>>? = null
@@ -71,13 +70,13 @@ class WdioRunProfileState constructor(
 		  consoleProperties.testFrameworkName,
 		  (consoleProperties as TestConsoleProperties)
 		)
-		consoleProperties.addStackTraceFilter(NodeStackTraceFilter(this.project, workingDirectory) as Filter)
+		consoleProperties.addStackTraceFilter(NodeStackTraceFilter(this.project, workingDirectory.path) as Filter)
 		for (filter in consoleProperties.stackTrackFilters)
 		{
 			baseTestsOutputConsoleView.addMessageFilter(filter)
 		}
 		baseTestsOutputConsoleView.addMessageFilter(
-		  NodeConsoleAdditionalFilter(this.project, workingDirectory) as Filter
+			NodeConsoleAdditionalFilter(this.project, workingDirectory.path) as Filter
 		)
 		return baseTestsOutputConsoleView
 	}
@@ -99,8 +98,10 @@ class WdioRunProfileState constructor(
 		NodeCommandLineUtil.configureUsefulEnvironment(commandLine)
 		NodeCommandLineUtil.prependNodeDirToPATH(commandLine, interpreter)
 		this.runSettings.envData.configureCommandLine(commandLine, true)
+		val wdioMainFile = this.wdioPackage.findBinFilePath("wdio", null, interpreter)
+			?: throw ExecutionException("Cannot find 'wdio' binary in '${this.wdioPackage.name}' package")
 
-		commandLine.addParameter(getMochaMainJsFile(interpreter, this.wdioPackage).absolutePath)
+		commandLine.addParameter(wdioMainFile.toString())
 		commandLine.addParameters(nodeOptions)
 		commandLine.addParameters(ParametersListUtil.parse(this.runSettings.nodeOptions.trim()))
 

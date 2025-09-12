@@ -1,7 +1,7 @@
 package icons
 
+import org.junit.jupiter.api.Test
 import org.zhangwenqing.jetbrains.Common
-import org.junit.Test
 import java.lang.reflect.InvocationTargetException
 
 class WdioIconsTest : Common<WdioIcons>()

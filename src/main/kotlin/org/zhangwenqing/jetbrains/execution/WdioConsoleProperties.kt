@@ -12,7 +12,7 @@ import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.Nullable
 
 
-const val FRAMEWORK_NAME = "WdioJavaScriptTestRunner";
+const val FRAMEWORK_NAME = "WdioJavaScriptTestRunner"
 
 class WdioConsoleProperties constructor(
   @NotNull configuration: WdioRunConfiguration,
@@ -53,8 +53,9 @@ class WdioConsoleProperties constructor(
 	override fun getTestLocator(): SMTestLocator = this.myLocator
 
 	@Nullable
-	override fun createRerunFailedTestsAction(consoleView: ConsoleView?): AbstractRerunFailedTestsAction
+	override fun createRerunFailedTestsAction(consoleView: ConsoleView?): AbstractRerunFailedTestsAction?
 	{
-		return WdioRerunFailedTestAction((consoleView as SMTRunnerConsoleView?)!!, this)
+		val smtConsoleView = consoleView as? SMTRunnerConsoleView ?: return null
+		return WdioRerunFailedTestAction(smtConsoleView, this)
 	}
 }

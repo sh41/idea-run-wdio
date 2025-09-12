@@ -1,37 +1,24 @@
 package org.zhangwenqing.jetbrains
 
-import com.intellij.openapi.util.text.StringUtil
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import junit.framework.TestCase
+import org.junit.jupiter.api.Assertions
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Modifier
-import com.intellij.openapi.project.Project
 
 const val NEWLINE = "\n"
 
 @Suppress("UnnecessaryAbstractClass")
-abstract class Common<T> : BasePlatformTestCase()
-{
+
+abstract class Common<T> {
 	@Throws(
-	  NoSuchMethodException::class,
-	  IllegalAccessException::class,
-	  InvocationTargetException::class,
-	  InstantiationException::class
+		NoSuchMethodException::class,
+		IllegalAccessException::class,
+		InvocationTargetException::class,
+		InstantiationException::class
 	)
-	protected fun privateConstructor(clz: Class<T>)
-	{
+	protected fun privateConstructor(clz: Class<T>) {
 		val constructor = clz.getDeclaredConstructor()
-		TestCase.assertTrue(Modifier.isPrivate(constructor.modifiers))
+		Assertions.assertTrue(Modifier.isPrivate(constructor.modifiers))
 		constructor.isAccessible = true
 		constructor.newInstance()
 	}
-
-	protected fun createIgnoreContent(vararg entries: String?) =
-	  StringUtil.join(entries, NEWLINE)
-
-	protected val fixtureRootFile
-		get() = myFixture.file.containingDirectory.virtualFile
-
-	protected val fixtureProject: Project
-		get() = myFixture.project
 }
