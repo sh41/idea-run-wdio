@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- compatible with only version 2025.2
+- requires package `wdio-teamcity-reporter` to be installed.
+
 ## [2023.1.28-0]
 
 ### Changed
