@@ -114,6 +114,10 @@ class WdioRunProfileState constructor(
 		val extraWdioOptionList = ParametersListUtil.parse(wdioConfigFilePath)
 		commandLine.addParameters(extraWdioOptionList)
 
+		// Ensure that the teamcity reporter is the loaded so that the test tree populates correctly.
+		commandLine.addParameter("--reporters")
+		commandLine.addParameter("teamcity")
+
 		commandLine.addParameter("--framework")
 		commandLine.addParameter(this.runSettings.framework)
 

@@ -31,7 +31,7 @@ class WdioConsoleProperties constructor(
 		setIfUndefined(HIDE_IGNORED_TEST, true)
 		setIfUndefined(SCROLL_TO_SOURCE, true)
 		setIfUndefined(SELECT_FIRST_DEFECT, true)
-		isIdBasedTestTree = true
+		isIdBasedTestTree = false
 		isPrintTestingStartedTime = false
 	}
 
