@@ -3,15 +3,9 @@ package org.zhangwenqing.jetbrains.execution
 import com.intellij.execution.Location
 import com.intellij.execution.PsiLocation
 import com.intellij.execution.testframework.sm.runner.SMTestLocator
-import com.intellij.javascript.testFramework.JsTestFileByTestNameIndex
-import com.intellij.javascript.testFramework.exports.ExportsTestFileStructureBuilder
-import com.intellij.javascript.testFramework.interfaces.mochaTdd.MochaTddFileStructureBuilder
-import com.intellij.javascript.testFramework.jasmine.JasmineFileStructureBuilder
-import com.intellij.javascript.testFramework.qunit.QUnitFileStructureBuilder
+import com.intellij.javascript.testFramework.JsTestSelector
 import com.intellij.javascript.testFramework.util.EscapeUtils
-import com.intellij.javascript.testFramework.util.JsTestFqn
 import com.intellij.lang.javascript.psi.JSFile
-import com.intellij.lang.javascript.psi.JSTestFileType
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
@@ -20,12 +14,14 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.GlobalSearchScope
-import com.intellij.util.ObjectUtils
 import com.intellij.util.containers.ContainerUtil
+import com.jetbrains.nodejs.mocha.execution.MochaDetector
 import org.jetbrains.annotations.Nullable
+import java.net.URI
+import java.net.URLDecoder
 
 
-private const val TEST_PROTOCOL_ID = "test"
+private const val WDIO_PROTOCOL_ID = "wdio"
 private const val SPLIT_CHAR = '.'
 
 class WdioTestLocationProvider : SMTestLocator
@@ -48,10 +44,27 @@ class WdioTestLocationProvider : SMTestLocator
 	  scope: GlobalSearchScope
 	): List<Location<PsiElement>>
 	{
-		if (TEST_PROTOCOL_ID == protocol)
+		// Check for the custom 'wdio' protocol
+		if (WDIO_PROTOCOL_ID == protocol)
 		{
-			val location: Location<PsiElement>? = getTestLocation(project, path, metaInfo)
+			try {
+				// The 'path' from the IDE is the full locationHint string
+				val uri = URI.create(path)
+				val testFilePath = uri.path
+				val testName = uri.fragment // The part after '#'
+
+				if (testFilePath == null || testName == null) {
+					return emptyList()
+				}
+
+				// URL-decode the test name and pass it to the existing logic
+				val decodedTestName = URLDecoder.decode(testName, "UTF-8")
+				val location: Location<PsiElement>? = getTestLocation(project, decodedTestName, testFilePath)
 			return ContainerUtil.createMaybeSingletonList(location)
+			} catch (_: Exception) {
+				// Log or handle malformed URI
+				return emptyList()
+			}
 		}
 		return emptyList()
 	}
@@ -95,108 +108,57 @@ class WdioTestLocationProvider : SMTestLocator
 
 	companion object
 	{
-		private fun findJasmineElement(project: Project, location: List<String>, testFilePath: String?): PsiElement?
-		{
-			val executedFile = findFile(testFilePath!!)
-			val testFqn = JsTestFqn(JSTestFileType.JASMINE, location)
-			val scope = GlobalSearchScope.projectScope(project)
-			val jsTestVirtualFiles = JsTestFileByTestNameIndex.findFiles(testFqn, scope, executedFile)
-			for (file in jsTestVirtualFiles)
-			{
-				val psiFile = PsiManager.getInstance(project).findFile(file)
-				if (psiFile is JSFile)
-				{
-					val builder = JasmineFileStructureBuilder.getInstance()
-					val element = builder.fetchCachedTestFileStructure(psiFile).findPsiElement(testFqn.names, null)
-					if (element != null && element.isValid)
-					{
-						return element
-					}
+		private fun findElement(
+			project: Project,
+			location: List<String>,
+			testFilePath: String?,
+			interfaceName: String
+		): PsiElement? {
+			if (location.isEmpty()) return null
+			val suites = location.subList(0, location.size - 1)
+			val testName = location.last()
+			val testSelector = JsTestSelector(suites, testName)
+
+			val virtualFiles = if (testFilePath != null) {
+				listOfNotNull(findFile(testFilePath))
+			} else {
+				MochaDetector.instance.findTestFilesInIndexesBySelector(project, testSelector)
+			}
+
+			for (file in virtualFiles) {
+				val jsFile = PsiManager.getInstance(project).findFile(file) as? JSFile ?: continue
+				val element =
+					MochaDetector.instance.findPsiElementByProbableInterface(jsFile, interfaceName, testSelector)
+				if (element != null && element.isValid) {
+					return element
 				}
 			}
 			return null
+		}
+
+		private fun findJasmineElement(project: Project, location: List<String>, testFilePath: String?): PsiElement? {
+			return findElement(project, location, testFilePath, "jasmine")
 		}
 
 		private fun findQUnitElement(project: Project, location: List<String>, testFilePath: String?): PsiElement?
 		{
-			val moduleName: String
-			val testName: String?
-			val executedFile = findFile(testFilePath!!)
-			when
+			if (testFilePath == null) return null
+			val newLocation = when
 			{
-				location.size > 1 ->
-				{
-					moduleName = location[0]
-					testName = location[1]
-				}
-				else ->
-				{
-					moduleName = "Default Module"
-					testName = location[0]
-				}
+				location.size > 1 -> location
+				else -> listOf("Default Module", location[0])
 			}
-			val key = JsTestFileByTestNameIndex.createQUnitKey(moduleName, testName)
-			val scope = GlobalSearchScope.projectScope(project)
-			val jsTestVirtualFiles = JsTestFileByTestNameIndex.findFilesByKey(key, scope, executedFile)
-			for (file in jsTestVirtualFiles)
-			{
-				val psiFile = PsiManager.getInstance(project).findFile(file)
-				if (psiFile is JSFile)
-				{
-					val builder = QUnitFileStructureBuilder.getInstance()
-					val element = builder.fetchCachedTestFileStructure(psiFile)
-					  .findPsiElement(moduleName, testName)
-					if (element != null && element.isValid)
-					{
-						return element
-					}
-				}
-			}
-			return null
+			return findElement(project, newLocation, testFilePath, "qunit")
 		}
 
 		private fun findExportsElement(project: Project, location: List<String>, testFilePath: String?): PsiElement?
 		{
-			val file = findJSFile(project, testFilePath) ?: return null
-			return ExportsTestFileStructureBuilder.getInstance()
-			  .fetchCachedTestFileStructure(file)
-			  .findPsiElement(location)
+			return findElement(project, location, testFilePath, "exports")
 		}
 
 		private fun findTddElement(project: Project, location: List<String>, testFilePath: String?): PsiElement?
 		{
-			val executedFile = findFile(testFilePath!!)
-			val scope = GlobalSearchScope.projectScope(project)
-			val testFqn = JsTestFqn(JSTestFileType.TDD, location)
-			val jsTestVirtualFiles = JsTestFileByTestNameIndex.findFiles(testFqn, scope, executedFile)
-			for (file in jsTestVirtualFiles)
-			{
-				val psiFile = PsiManager.getInstance(project).findFile(file)
-				if (psiFile is JSFile)
-				{
-					val suiteNames = location.subList(0, location.size - 1)
-					val testName = ContainerUtil.getLastItem(location) as String
-					val element = MochaTddFileStructureBuilder.getInstance()
-					  .fetchCachedTestFileStructure(psiFile)
-					  .findPsiElement(suiteNames, testName)
-					if (element != null && element.isValid)
-					{
-						return element
-					}
-				}
-			}
-			return null
-		}
-
-		private fun findJSFile(project: Project, testFilePath: String?): JSFile?
-		{
-			val file: VirtualFile? = findFile(testFilePath!!)
-			if (file == null || !file.isValid)
-			{
-				return null
-			}
-			val psiFile = PsiManager.getInstance(project).findFile(file)
-			return ObjectUtils.tryCast(psiFile, JSFile::class.java)
+			return findElement(project, location, testFilePath, "mocha-tdd")
 		}
 
 		private fun findFile(filePath: String): VirtualFile?
