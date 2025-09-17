@@ -41,14 +41,15 @@ repositories {
 
 dependencies {
 	implementation(kotlin("stdlib"))
-	testImplementation(kotlin("test"))
+	implementation("org.jetbrains:annotations:13.0")
 	testImplementation("org.junit.jupiter:junit-jupiter-api:5.13.4")
-	testImplementation("com.jetbrains.intellij.platform:test-framework-junit5:252.23892.409")
+	testRuntimeOnly("com.jetbrains.intellij.platform:test-framework-junit5:252.23892.409")
 	testRuntimeOnly("junit:junit:4.13.2")
 	intellijPlatform {
 		testFramework(TestFrameworkType.JUnit5)
 		bundledPlugin("com.intellij.modules.json")
 		bundledPlugin("com.intellij.modules.ultimate")
+		bundledPlugin("JUnit")
 		intellijIdeaUltimate("2025.2")
 		val bundledPlatformPlugins = projectProperty("bundledPlatformPlugins").split(',').map(String::trim).filter(String::isNotEmpty)
 		if (bundledPlatformPlugins.isNotEmpty())
@@ -128,8 +129,8 @@ tasks {
 	}
 
 	patchPluginXml {
-		sinceBuild.set("241")
-		untilBuild.set("252.*")
+		sinceBuild.set(projectProperty("pluginSinceBuild"))
+		untilBuild.set(projectProperty("pluginUntilBuild"))
 
 		val start = "<!-- Plugin description -->"
 		val end = "<!-- Plugin description end -->"
@@ -177,5 +178,15 @@ tasks {
 		// Specify pre-release label to publish the plugin in a custom Release Channel automatically. Read more:
 		// https://plugins.jetbrains.com/docs/intellij/deployment.html#specifying-a-release-channel
 		channels.set(listOf("stable"))
+	}
+
+}
+dependencyAnalysis {
+	issues {
+		all {
+			onAny {
+				severity("fail")
+			}
+		}
 	}
 }
