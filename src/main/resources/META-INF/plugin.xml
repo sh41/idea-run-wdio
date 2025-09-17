@@ -17,6 +17,9 @@
 		<runConfigurationProducer implementation="org.zhangwenqing.jetbrains.execution.WdioRunConfigurationProducer"
 								  order="first"/>
         <programRunner implementation="org.zhangwenqing.jetbrains.execution.WdioRunProgramRunner"/>
-    </extensions>
 
+		<codeInsight.lineMarkerProvider
+				language="JavaScript"
+				implementationClass="org.zhangwenqing.jetbrains.WdioTestGutterIconProvider"/>
+    </extensions>
 </idea-plugin>
