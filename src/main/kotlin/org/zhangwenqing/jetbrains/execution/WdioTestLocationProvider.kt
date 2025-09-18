@@ -17,8 +17,8 @@ import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.util.containers.ContainerUtil
 import com.jetbrains.nodejs.mocha.execution.MochaDetector
 import org.jetbrains.annotations.Nullable
+import java.io.File
 import java.net.URI
-import java.net.URLDecoder
 
 
 private const val WDIO_PROTOCOL_ID = "wdio"
@@ -50,16 +50,13 @@ class WdioTestLocationProvider : SMTestLocator
 			try {
 				// The 'path' from the IDE is the full locationHint string
 				val uri = URI.create(path)
-				val testFilePath = uri.path
+				val testFilePath = File(project.basePath, uri.path).absolutePath
 				val testName = uri.fragment // The part after '#'
 
 				if (testFilePath == null || testName == null) {
 					return emptyList()
 				}
-
-				// URL-decode the test name and pass it to the existing logic
-				val decodedTestName = URLDecoder.decode(testName, "UTF-8")
-				val location: Location<PsiElement>? = getTestLocation(project, decodedTestName, testFilePath)
+				val location: Location<PsiElement>? = getTestLocation(project, testName, testFilePath)
 			return ContainerUtil.createMaybeSingletonList(location)
 			} catch (_: Exception) {
 				// Log or handle malformed URI

@@ -8,13 +8,14 @@ import com.intellij.lang.javascript.psi.JSCallExpression
 import com.intellij.lang.javascript.psi.JSFile
 import com.intellij.lang.javascript.psi.JSLiteralExpression
 import com.intellij.openapi.editor.markup.GutterIconRenderer
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 import java.net.URI
 
 class WdioTestGutterIconProvider : LineMarkerProvider {
 
-	@Suppress("UnstableApiUsage")
 	override fun getLineMarkerInfo(element: PsiElement): LineMarkerInfo<*>? {
 		// Only run in JavaScript or TypeScript files
 		if (element.containingFile !is JSFile) {
@@ -31,8 +32,9 @@ class WdioTestGutterIconProvider : LineMarkerProvider {
 			return null
 		}
 
-		val locationUrl = buildLocationUrl(callExpression) ?: return null
+		val locationUrl = buildLocationUrl(callExpression, element.project) ?: return null
 		val stateStorage = TestStateStorage.getInstance(element.project)
+
 		val testRecord = stateStorage.getState(locationUrl) ?: return null
 
 		// This is the correct, pragmatic way to get the icon.
@@ -55,12 +57,34 @@ class WdioTestGutterIconProvider : LineMarkerProvider {
 		)
 	}
 
-	private fun buildLocationUrl(callExpression: JSCallExpression): String? {
+	// Modify the function to accept the project and calculate a relative path
+	private fun buildLocationUrl(callExpression: JSCallExpression, project: Project): String? {
 		val virtualFile = callExpression.containingFile?.virtualFile ?: return null
+		val projectBasePath = project.basePath ?: return null
+
+		// Calculate the relative path from the project's base directory
+		val relativePath = FileUtil.getRelativePath(projectBasePath, virtualFile.path, '/') ?: return null
+
 		val fullTitle = buildFullTitle(callExpression) ?: return null
-		val encodedTitle = URI(null, null, null, fullTitle).rawFragment
-		val filePath = virtualFile.path
-		return "wdio://$filePath#$encodedTitle"
+
+		// Use the URI class to correctly encode the fragment
+		val encodedFragment = URI(null, null, null, null, fullTitle).rawFragment
+
+		return "wdio://$relativePath#$encodedFragment"
+	}
+
+
+	private fun getTitleFromCallExpression(callExpression: JSCallExpression): String? {
+		val methodExpr = callExpression.methodExpression ?: return null
+		if (methodExpr.text != "it" && methodExpr.text != "describe") {
+			return null
+		}
+
+		val firstArg = callExpression.arguments.getOrNull(0)
+		if (firstArg is JSLiteralExpression && firstArg.isQuotedLiteral) {
+			return firstArg.stringValue
+		}
+		return null
 	}
 
 	private fun buildFullTitle(element: JSCallExpression): String? {
@@ -68,20 +92,11 @@ class WdioTestGutterIconProvider : LineMarkerProvider {
 		var current: JSCallExpression? = element
 
 		while (current != null) {
-			val methodExpr = current.methodExpression
-			if (methodExpr != null && (methodExpr.text == "it" || methodExpr.text == "describe")) {
-				val firstArg = current.arguments.getOrNull(0)
-				if (firstArg is JSLiteralExpression && firstArg.isQuotedLiteral) {
-					// If stringValue is null (e.g., template literal with expression), we can't build a static path.
-					val titlePart = firstArg.stringValue ?: return null
-					titles.add(titlePart)
-				} else {
-					// If the test name is not a string literal, we can't build a static path.
-					return null
-				}
-			}
+			val titlePart = getTitleFromCallExpression(current) ?: return null
+			titles.add(titlePart)
 			current = PsiTreeUtil.getParentOfType(current, JSCallExpression::class.java, true)
 		}
+
 		if (titles.isEmpty()) return null
 		return titles.reversed().joinToString(".")
 	}
