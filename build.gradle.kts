@@ -6,6 +6,91 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.text.SimpleDateFormat
 import java.util.*
+import java.net.URI
+import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Node
+
+fun latestEapBuild(): String
+{
+	// 1) Prefer JetBrains Releases API to get a concrete numeric EAP build (e.g., 253.20558.101)
+	val apiUris = listOf(
+	  URI("https://data.services.jetbrains.com/products/releases?code=IIU&type=eap&latest=true&fields=build"),
+	  URI("https://data.services.jetbrains.com/products/releases?code=IIU&type=eap&latest=true")
+	)
+	for (uri in apiUris)
+	{
+		val json = kotlin.runCatching {
+			uri.toURL().openStream().bufferedReader().use { it.readText() }
+		}.getOrNull()
+		if (json != null)
+		{
+			val regex = """"build"\s*:\s*"([0-9.]+)"""".toRegex()
+			val match = regex.find(json)
+			if (match != null)
+			{
+				return match.groupValues[1] // e.g., 253.20558.101
+			}
+		}
+	}
+
+	// 2) Fallback: parse snapshots metadata and pick the last 3-part numeric EAP snapshot, then strip the suffix
+	val snapshotsUri = URI("https://cache-redirector.jetbrains.com/www.jetbrains.com/intellij-repository/snapshots/com/jetbrains/intellij/idea/ideaIU/maven-metadata.xml")
+	val versions = kotlin.runCatching {
+		val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(snapshotsUri.toURL().openStream())
+		doc.documentElement.normalize()
+		val versioning = doc.getElementsByTagName("versioning").item(0)
+		val versionsNode = versioning?.childNodes
+		buildList {
+			if (versionsNode != null)
+			{
+				for (i in 0 until versionsNode.length)
+				{
+					val n = versionsNode.item(i)
+					if (n.nodeName == "versions")
+					{
+						val children = n.childNodes
+						for (j in 0 until children.length)
+						{
+							val v = children.item(j)
+							if (v.nodeName == "version") add(v.textContent)
+						}
+					}
+				}
+			}
+		}
+	}.getOrNull().orEmpty()
+
+	// Look for versions like 253.17525.95-EAP-SNAPSHOT and convert to 253.17525.95
+	val numericEap = versions.asSequence()
+	  .mapNotNull { v ->
+		  val m = Regex("""^(\d+\.\d+\.\d+)-EAP-SNAPSHOT$""").matchEntire(v)
+		  m?.groupValues?.get(1)
+	  }
+	  .lastOrNull()
+
+	if (numericEap != null) return numericEap
+
+	throw IllegalStateException("No numeric EAP build found from JetBrains API or snapshots metadata")
+}
+
+val latestIdeaIuEap: String by lazy { latestEapBuild() }
+
+fun isAtLeast2025_3(version: String): Boolean
+{
+	// Supports "YYYY.M[.patch]" and "BBB.xxx" (e.g., 253.17525.95)
+	val yearMatch = Regex("""^(\d{4})\.(\d+)""").find(version)
+	if (yearMatch != null)
+	{
+		val (year, minor) = yearMatch.destructured
+		return year.toInt() > 2025 || (year.toInt() == 2025 && minor.toInt() >= 3)
+	}
+	val branchMatch = Regex("""^(\d{3})""").find(version)
+	if (branchMatch != null)
+	{
+		return branchMatch.groupValues[1].toInt() >= 253
+	}
+	return false
+}
 
 plugins {    // gradle-intellij-plugin - read more: https://github.com/JetBrains/gradle-intellij-plugin
 	id("org.jetbrains.intellij.platform") version "2.9.0"
@@ -19,8 +104,14 @@ val timestamp by lazy { SimpleDateFormat("yyyyMMdd-HHmmss").format(Date()) }
 
 fun projectProperty(key: String) = project.findProperty(key).toString()
 
+val pluginBaseVersion = projectProperty("ideDependencyVersion")
+
 group = projectProperty("pluginGroup")
-version = if (isProductionBuild) projectProperty("pluginVersion") else "${projectProperty("pluginVersion")}-$timestamp"
+version = if (isProductionBuild)
+{
+	pluginBaseVersion
+}
+else "$pluginBaseVersion-$timestamp"
 
 repositories {
 	if (!System.getenv("USE_ALI_REPO").isNullOrEmpty())
@@ -50,7 +141,15 @@ dependencies {
 		bundledPlugin("com.intellij.modules.json")
 		bundledPlugin("com.intellij.modules.ultimate")
 		bundledPlugin("JUnit")
-		intellijIdeaUltimate("2025.2")
+		val ideVersion = projectProperty("ideDependencyVersion")
+		if (isAtLeast2025_3(ideVersion))
+		{
+			intellijIdea(ideVersion)
+		}
+		else
+		{
+			intellijIdeaUltimate(ideVersion)
+		}
 		val bundledPlatformPlugins = projectProperty("bundledPlatformPlugins").split(',').map(String::trim).filter(String::isNotEmpty)
 		if (bundledPlatformPlugins.isNotEmpty())
 		{
@@ -73,12 +172,40 @@ intellijPlatform {
 	}
 	pluginVerification {
 		ides {
-			val versions = projectProperty("pluginVerifierIdeVersions")
+			// Read configured versions from gradle.properties
+			val configured = projectProperty("pluginVerifierIdeVersions")
 			  .split(',')
 			  .map(String::trim)
 			  .filter(String::isNotEmpty)
-			versions.forEach { version ->
-				create(IntelliJPlatformType.IntellijIdeaUltimate, version)
+
+			// Resolve latest EAP build, but don't fail the build if it can't be fetched
+			val latest = kotlin.runCatching { latestIdeaIuEap }.getOrNull()
+
+			// Support optional "LATEST-EAP" token and also append latest if not explicitly present
+			val normalized = configured.map { v ->
+				if (v.equals("LATEST-EAP", ignoreCase = true)) latest ?: v else v
+			}
+
+			val combined = buildList {
+				addAll(normalized)
+				if (latest != null && normalized.none { it == latest }) add(latest)
+			}
+			  .filter { it != "LATEST-EAP" }
+			  .distinct()
+
+			if (latest == null)
+			{
+				logger.warn("Plugin Verifier: could not resolve latest EAP build; proceeding without it.")
+			}
+			else
+			{
+				logger.lifecycle("Plugin Verifier: including latest EAP $latest")
+			}
+			logger.lifecycle("Plugin Verifier IDEs: ${combined.joinToString(", ")}")
+
+			combined.forEach { version ->
+				val type = if (isAtLeast2025_3(version)) IntelliJPlatformType.IntellijIdea else IntelliJPlatformType.IntellijIdeaUltimate
+				create(type, version)
 			}
 		}
 
@@ -89,7 +216,7 @@ intellijPlatform {
 // Configure Gradle Changelog Plugin - read more: https://github.com/JetBrains/gradle-changelog-plugin
 changelog {
 	groups.set(emptyList())
-	version.set(projectProperty("pluginVersion"))
+	version.set(pluginBaseVersion)
 	repositoryUrl.set(projectProperty("pluginRepositoryUrl"))
 }
 
@@ -147,7 +274,7 @@ tasks {
 		changeNotes.set(provider {
 			with(changelog) {
 				renderItem(
-				  getOrNull(projectProperty("pluginVersion"))
+				  getOrNull(pluginBaseVersion)
 					?: kotlin.runCatching { getLatest() }.getOrElse { getUnreleased() },
 				  Changelog.OutputType.HTML,
 				)
