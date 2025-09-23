@@ -11,81 +11,104 @@ import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.execution.testframework.TestConsoleProperties
 import com.intellij.execution.testframework.sm.SMTestRunnerConnectionUtil
 import com.intellij.execution.ui.ConsoleView
-import com.intellij.execution.ui.ExecutionConsole
 import com.intellij.javascript.debugger.CommandLineDebugConfigurator
 import com.intellij.javascript.nodejs.NodeCommandLineUtil
 import com.intellij.javascript.nodejs.NodeConsoleAdditionalFilter
 import com.intellij.javascript.nodejs.NodeStackTraceFilter
-import com.intellij.javascript.nodejs.debug.NodeLocalDebuggableRunProfileStateSync
+import com.intellij.javascript.nodejs.debug.NodeDebuggableRunProfileState
 import com.intellij.javascript.nodejs.interpreter.NodeJsInterpreter
 import com.intellij.javascript.nodejs.util.NodePackage
-import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.execution.ParametersListUtil
 import org.jetbrains.annotations.NotNull
-import org.jetbrains.annotations.Nullable
+import org.jetbrains.concurrency.AsyncPromise
+import org.jetbrains.concurrency.Promise
 import org.zhangwenqing.jetbrains.WdioUtil.FRAMEWORK_MOCHA
 import org.zhangwenqing.jetbrains.WdioUtil.FRAMRWORK_CUCUMBER
 import org.zhangwenqing.jetbrains.WdioUtil.FRAMRWORK_JASMINE
-import java.io.File
 import java.nio.charset.StandardCharsets
 
 
-class WdioRunProfileState constructor(
+class WdioRunProfileState(
 	@param:NotNull private val project: Project,
 	@param:NotNull private val runConfiguration: WdioRunConfiguration,
 	@param:NotNull private val env: ExecutionEnvironment,
 	@param:NotNull private val wdioPackage: NodePackage,
 	@param:NotNull val runSettings: WdioRunSettings
-) : NodeLocalDebuggableRunProfileStateSync()
+) : NodeDebuggableRunProfileState
 {
 	private var myRerunActionFailedTests: List<List<String>>? = null
 
+	override fun execute(configurator: CommandLineDebugConfigurator?): Promise<ExecutionResult> {
+		val promise = AsyncPromise<ExecutionResult>()
+
+		ApplicationManager.getApplication().executeOnPooledThread {
+			try {
+				val processHandler = createProcessHandler(configurator)
+				ProcessTerminatedListener.attach(processHandler)
+
+				ApplicationManager.getApplication().invokeLater {
+					try {
+						val consoleProperties = runConfiguration.createTestConsoleProperties(
+							env.executor,
+							NodeCommandLineUtil.shouldUseTerminalConsole(processHandler)
+						)
+						val consoleView = createSMTRunnerConsoleView(consoleProperties)
+						consoleView.attachToProcess(processHandler)
+
+						val rerunAction = consoleProperties.createRerunFailedTestsAction(consoleView)
+						val actions = if (rerunAction != null) arrayOf(rerunAction) else emptyArray()
+
+						val executionResult = DefaultExecutionResult(consoleView, processHandler, *actions)
+						promise.setResult(executionResult)
+					} catch (e: Exception) {
+						promise.setError(e)
+					}
+				}
+			} catch (e: ExecutionException) {
+				promise.setError(e)
+			}
+		}
+
+		return promise
+	}
+
 	@Throws(ExecutionException::class)
-	override fun executeSync(@Nullable configurator: CommandLineDebugConfigurator?): ExecutionResult
+	private fun createProcessHandler(configurator: CommandLineDebugConfigurator?): ProcessHandler
 	{
 		val interpreter: NodeJsInterpreter = this.runSettings.interpreterRef.resolveNotNull(this.project)
 		val commandLine = NodeCommandLineUtil.createCommandLineForTestTools()
 		NodeCommandLineUtil.configureCommandLine(commandLine, configurator, interpreter) {
 			configureCommandLine(commandLine, interpreter, it)
 		}
-		val processHandler = NodeCommandLineUtil.createProcessHandler(commandLine, false)
-		val consoleProperties: WdioConsoleProperties = this.runConfiguration.createTestConsoleProperties(
-		  this.env.executor,
-		  NodeCommandLineUtil.shouldUseTerminalConsole(processHandler as ProcessHandler)
-		)
-		val consoleView: ConsoleView = createSMTRunnerConsoleView(commandLine.workDirectory, consoleProperties)
-		ProcessTerminatedListener.attach(processHandler as ProcessHandler)
-		consoleView.attachToProcess(processHandler as ProcessHandler)
-		val executionResult = DefaultExecutionResult(consoleView as ExecutionConsole, processHandler as ProcessHandler)
-		executionResult.setRestartActions(consoleProperties.createRerunFailedTestsAction(consoleView) as AnAction?)
-		return executionResult
+		return NodeCommandLineUtil.createProcessHandler(commandLine, false)
 	}
 
-	private fun createSMTRunnerConsoleView(workingDirectory: File, consoleProperties: WdioConsoleProperties): ConsoleView
+	private fun createSMTRunnerConsoleView(consoleProperties: WdioConsoleProperties): ConsoleView
 	{
 		val baseTestsOutputConsoleView = SMTestRunnerConnectionUtil.createConsole(
-		  consoleProperties.testFrameworkName,
-		  (consoleProperties as TestConsoleProperties)
+			consoleProperties.testFrameworkName,
+			(consoleProperties as TestConsoleProperties)
 		)
-		consoleProperties.addStackTraceFilter(NodeStackTraceFilter(this.project, workingDirectory.path) as Filter)
+		val workDir = runSettings.workingDir.ifBlank { project.basePath ?: "" }
+		consoleProperties.addStackTraceFilter(NodeStackTraceFilter(this.project, workDir) as Filter)
 		for (filter in consoleProperties.stackTrackFilters)
 		{
 			baseTestsOutputConsoleView.addMessageFilter(filter)
 		}
 		baseTestsOutputConsoleView.addMessageFilter(
-			NodeConsoleAdditionalFilter(this.project, workingDirectory.path) as Filter
+			NodeConsoleAdditionalFilter(this.project, workDir) as Filter
 		)
 		return baseTestsOutputConsoleView
 	}
 
-	@Throws(ExecutionException::class)
 	private fun configureCommandLine(
-	  commandLine: GeneralCommandLine,
-	  interpreter: NodeJsInterpreter,
-	  debugMode: Boolean
+		commandLine: GeneralCommandLine,
+		interpreter: NodeJsInterpreter,
+		debugMode: Boolean
 	)
 	{
 		val nodeOptions: List<String> = ArrayList(commandLine.parametersList.parameters)
@@ -107,10 +130,7 @@ class WdioRunProfileState constructor(
 
 		commandLine.addParameter("run")
 		var wdioConfigFilePath = this.runSettings.wdioConfigFilePath.trim()
-		if (wdioConfigFilePath.isEmpty())
-		{
-			wdioConfigFilePath = "wdio.conf.js"
-		}
+		wdioConfigFilePath = wdioConfigFilePath.ifBlank { "wdio.conf.js" }
 		val extraWdioOptionList = ParametersListUtil.parse(wdioConfigFilePath)
 		commandLine.addParameters(extraWdioOptionList)
 
@@ -149,9 +169,9 @@ class WdioRunProfileState constructor(
 			else
 			{
 				commandLine.addParameter(
-				  "${
-					  FileUtil.toSystemDependentName(this.runSettings.testFilePath)
-				  }:${runSettings.testLineNumbers[0]}"
+					"${
+						FileUtil.toSystemDependentName(this.runSettings.testFilePath)
+					}:${runSettings.testLineNumbers[0]}"
 				)
 			}
 		}
