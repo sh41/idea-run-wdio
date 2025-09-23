@@ -12,10 +12,10 @@ import com.intellij.javascript.testFramework.PreferableRunConfiguration
 import com.intellij.javascript.testFramework.interfaces.mochaTdd.MochaTddFileStructureBuilder
 import com.intellij.javascript.testFramework.jasmine.JasmineFileStructureBuilder
 import com.intellij.lang.javascript.psi.JSFile
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
+import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.Ref
-import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
@@ -25,6 +25,10 @@ import com.intellij.util.ObjectUtils
 import com.jetbrains.nodejs.mocha.execution.MochaRunConfiguration
 
 class WdioRunConfigurationProducer : LazyRunConfigurationProducer<WdioRunConfiguration>() {
+	companion object {
+		private val LOG = Logger.getInstance(WdioRunConfigurationProducer::class.java)
+	}
+
 	override fun getConfigurationFactory(): ConfigurationFactory =
 		WdioConfigurationType.getInstance().configurationFactories[0]
 
@@ -61,19 +65,13 @@ class WdioRunConfigurationProducer : LazyRunConfigurationProducer<WdioRunConfigu
 
 		val project = context.project
 		val workingDir = project.basePath ?: ""
-		val projectBaseDir = project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) }
-
-		val wdioConfigPath = if (projectBaseDir != null) {
-			findConfigFileRecursive(projectBaseDir)?.path
-		} else {
-			null
-		}
+		val wdioConfig = findWdioConfig(context)
 
 		val runSettingsBuilder = elementRunInfo.runSettings.builder()
 			.setWorkingDir(workingDir)
 
-		if (wdioConfigPath != null) {
-			runSettingsBuilder.setWdioConfigFilePath(wdioConfigPath)
+		if (wdioConfig != null) {
+			runSettingsBuilder.setWdioConfigFilePath(wdioConfig.path)
 		} else if (elementRunInfo.runSettings.wdioConfigFilePath.isEmpty()) {
 			runSettingsBuilder.setWdioConfigFilePath("wdio.conf.ts")
 		}
@@ -129,28 +127,32 @@ class WdioRunConfigurationProducer : LazyRunConfigurationProducer<WdioRunConfigu
 		} else null
 	}
 
-	private fun findConfigFileRecursive(folder: VirtualFile): VirtualFile? {
-		val wdioConfigFilePaths = setOf(
-			"wdio.local.conf.ts",
-			"wdio.local.conf.js",
-			"wdio.ios.conf.ts",
-			"wdio.ios.conf.js",
-			"wdio.conf.ts",
-			"wdio.conf.js"
+	private fun findWdioConfig(context: ConfigurationContext): VirtualFile? {
+		val project = context.project
+		// A list of common config file names, in order of preference
+		val configNames = listOf(
+			"wdio.local.conf.ts", "wdio.local.conf.js",
+			"wdio.ios.conf.ts", "wdio.ios.conf.js",
+			"wdio.conf.ts", "wdio.conf.js"
 		)
 
-		var result: VirtualFile? = null
-		VfsUtilCore.iterateChildrenRecursively(
-			folder,
-			{ it.isDirectory && it.name !in setOf("node_modules", ".git") }, // Filter out common large directories
-			{
-				if (!it.isDirectory && it.name in wdioConfigFilePaths) {
-					result = it
-					return@iterateChildrenRecursively false // Stop searching
-				}
-				true
-			})
-		return result
+		// Search for the file in the project's content roots
+		val projectFileIndex = ProjectFileIndex.getInstance(project)
+		var foundConfig: VirtualFile? = null
+		projectFileIndex.iterateContent { file ->
+			if (!file.isDirectory && file.name in configNames) {
+				foundConfig = file
+				return@iterateContent false // Stop searching once found
+			}
+			true
+		}
+
+		if (foundConfig != null) {
+			LOG.debug("Found wdio config file: ${foundConfig.path}")
+		} else {
+			LOG.debug("No wdio config file found in project.")
+		}
+		return foundConfig
 	}
 
 	private fun createTestElementRunInfo(

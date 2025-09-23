@@ -4,11 +4,10 @@ import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.*
-import java.net.URI
 import javax.xml.parsers.DocumentBuilderFactory
-import org.w3c.dom.Node
 
 fun latestEapBuild(): String
 {
@@ -34,7 +33,8 @@ fun latestEapBuild(): String
 	}
 
 	// 2) Fallback: parse snapshots metadata and pick the last 3-part numeric EAP snapshot, then strip the suffix
-	val snapshotsUri = URI("https://cache-redirector.jetbrains.com/www.jetbrains.com/intellij-repository/snapshots/com/jetbrains/intellij/idea/ideaIU/maven-metadata.xml")
+	val snapshotsUri =
+	  URI("https://cache-redirector.jetbrains.com/www.jetbrains.com/intellij-repository/snapshots/com/jetbrains/intellij/idea/ideaIU/maven-metadata.xml")
 	val versions = kotlin.runCatching {
 		val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(snapshotsUri.toURL().openStream())
 		doc.documentElement.normalize()
@@ -150,7 +150,8 @@ dependencies {
 		{
 			intellijIdeaUltimate(ideVersion)
 		}
-		val bundledPlatformPlugins = projectProperty("bundledPlatformPlugins").split(',').map(String::trim).filter(String::isNotEmpty)
+		val bundledPlatformPlugins =
+		  projectProperty("bundledPlatformPlugins").split(',').map(String::trim).filter(String::isNotEmpty)
 		if (bundledPlatformPlugins.isNotEmpty())
 		{
 			bundledPlugins(*bundledPlatformPlugins.toTypedArray())
@@ -204,7 +205,8 @@ intellijPlatform {
 			logger.lifecycle("Plugin Verifier IDEs: ${combined.joinToString(", ")}")
 
 			combined.forEach { version ->
-				val type = if (isAtLeast2025_3(version)) IntelliJPlatformType.IntellijIdea else IntelliJPlatformType.IntellijIdeaUltimate
+				val type =
+				  if (isAtLeast2025_3(version)) IntelliJPlatformType.IntellijIdea else IntelliJPlatformType.IntellijIdeaUltimate
 				create(type, version)
 			}
 		}
