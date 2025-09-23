@@ -4,7 +4,6 @@ import com.intellij.execution.Location
 import com.intellij.execution.PsiLocation
 import com.intellij.execution.testframework.sm.runner.SMTestLocator
 import com.intellij.javascript.testFramework.JsTestSelector
-import com.intellij.javascript.testFramework.util.EscapeUtils
 import com.intellij.lang.javascript.psi.JSFile
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
@@ -17,12 +16,13 @@ import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.util.containers.ContainerUtil
 import com.jetbrains.nodejs.mocha.execution.MochaDetector
 import org.jetbrains.annotations.Nullable
+import org.zhangwenqing.jetbrains.WdioConstants.WDIO_PROTOCOL_ID
+import org.zhangwenqing.jetbrains.WdioConstants.WDIO_PROTOCOL_QUERY_PARAM_LOCATION
 import java.io.File
 import java.net.URI
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 
-
-private const val WDIO_PROTOCOL_ID = "wdio"
-private const val SPLIT_CHAR = '.'
 
 class WdioTestLocationProvider : SMTestLocator
 {
@@ -50,8 +50,9 @@ class WdioTestLocationProvider : SMTestLocator
 			// The 'path' from the IDE is the full locationHint string
 			val uri = URI.create(path)
 			val testFilePath = File(project.basePath, uri.path).absolutePath
-			val testName = uri.fragment ?: return emptyList() // The part after '#'
-			getTestLocation(project, testName, testFilePath)
+			val testSelectorPath =
+				parseMultiValueQueryString(uri.query)[WDIO_PROTOCOL_QUERY_PARAM_LOCATION] ?: return emptyList()
+			getTestLocation(project, testSelectorPath, testFilePath)
 		}.getOrNull()
 
 		return ContainerUtil.createMaybeSingletonList(location)
@@ -59,14 +60,14 @@ class WdioTestLocationProvider : SMTestLocator
 
 	private fun getTestLocation(
 		project: Project,
-		locationData: String,
+		testSelectorPath: List<String>,
 		testFilePath: String?
 	): Location<PsiElement>?
 	{
-		val path = EscapeUtils.split(locationData, SPLIT_CHAR)
-		if (path.isEmpty()) return null
+		if (testSelectorPath.isEmpty()) return null
 
-		val psiElement = findTest(project, path, testFilePath) ?: findSuite(project, path, testFilePath)
+		val psiElement =
+			findTest(project, testSelectorPath, testFilePath) ?: findSuite(project, testSelectorPath, testFilePath)
 
 		return psiElement?.let { PsiLocation.fromPsiElement(it) }
 	}
@@ -116,6 +117,27 @@ class WdioTestLocationProvider : SMTestLocator
 		{
 			return if (StringUtil.isEmptyOrSpaces(filePath)) null
 			else LocalFileSystem.getInstance().findFileByPath(FileUtil.toSystemIndependentName(filePath))
+		}
+
+		private fun parseMultiValueQueryString(query: String): Map<String, List<String>> {
+			val result = mutableMapOf<String, MutableList<String>>()
+			if (query.isBlank()) {
+				return result
+			}
+
+			query.split('&').forEach { pair ->
+				val parts = pair.split('=', limit = 2)
+				val encodedKey = parts[0]
+				val encodedValue = if (parts.size > 1) parts[1] else ""
+
+				// Manually replace '+' with its percent-encoded equivalent before decoding
+				val decodedKey = URLDecoder.decode(encodedKey, StandardCharsets.UTF_8.toString())
+				val decodedValue = URLDecoder.decode(encodedValue, StandardCharsets.UTF_8.toString())
+
+				result.getOrPut(decodedKey) { mutableListOf() }.add(decodedValue)
+			}
+
+			return result
 		}
 	}
 }

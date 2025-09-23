@@ -22,4 +22,10 @@ object WdioConstants {
 	const val TEST_NAMES__KEY = "test-names"
 	const val TEST_LINE_NUMBERS__KEY = "test-line-numbers"
 	const val TEST_NAME__KEY = "name"
+
+	// The expected protocol to match against, must match the team city reporter's protocol/schema
+	const val WDIO_PROTOCOL_ID = "wdio"
+
+	// must match the teamcity reporter's query parameter name.
+	const val WDIO_PROTOCOL_QUERY_PARAM_LOCATION = "locationInSuite"
 }
