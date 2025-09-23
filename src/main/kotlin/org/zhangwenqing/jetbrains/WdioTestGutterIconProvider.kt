@@ -8,13 +8,14 @@ import com.intellij.lang.javascript.psi.JSCallExpression
 import com.intellij.lang.javascript.psi.JSFile
 import com.intellij.lang.javascript.psi.JSLiteralExpression
 import com.intellij.openapi.editor.markup.GutterIconRenderer
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 import java.net.URI
 
-class WdioTestGutterIconProvider : LineMarkerProvider {
+class WdioTestGutterIconProvider : LineMarkerProvider, DumbAware {
 
 	override fun getLineMarkerInfo(element: PsiElement): LineMarkerInfo<*>? {
 		// Only run in JavaScript or TypeScript files

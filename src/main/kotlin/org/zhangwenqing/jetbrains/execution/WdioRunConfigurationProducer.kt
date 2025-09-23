@@ -14,6 +14,7 @@ import com.intellij.javascript.testFramework.jasmine.JasmineFileStructureBuilder
 import com.intellij.lang.javascript.psi.JSFile
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.Ref
 import com.intellij.openapi.vfs.VirtualFile
@@ -24,7 +25,7 @@ import com.intellij.psi.util.PsiUtilCore
 import com.intellij.util.ObjectUtils
 import com.jetbrains.nodejs.mocha.execution.MochaRunConfiguration
 
-class WdioRunConfigurationProducer : LazyRunConfigurationProducer<WdioRunConfiguration>() {
+class WdioRunConfigurationProducer : LazyRunConfigurationProducer<WdioRunConfiguration>(), DumbAware {
 	companion object {
 		private val LOG = Logger.getInstance(WdioRunConfigurationProducer::class.java)
 	}
