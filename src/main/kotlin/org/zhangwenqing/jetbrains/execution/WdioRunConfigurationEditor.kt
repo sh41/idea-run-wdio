@@ -25,6 +25,7 @@ import com.intellij.util.ui.SwingHelper
 import com.intellij.webcore.ui.PathShortener
 import org.jetbrains.annotations.NotNull
 import org.zhangwenqing.jetbrains.WdioBundle
+import org.zhangwenqing.jetbrains.WdioConstants
 import org.zhangwenqing.jetbrains.WdioUtil
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -136,7 +137,13 @@ class WdioRunConfigurationEditor(
 
 	private fun createFrameworkFieldEditor(): ComboBox<String>
 	{
-		return ComboBox(arrayOf(WdioUtil.FRAMEWORK_MOCHA, WdioUtil.FRAMEWORK_JASMINE, WdioUtil.FRAMEWORK_CUCUMBER))
+		return ComboBox(
+			arrayOf(
+				WdioConstants.FRAMEWORK_MOCHA,
+				WdioConstants.FRAMEWORK_JASMINE,
+				WdioConstants.FRAMEWORK_CUCUMBER
+			)
+		)
 	}
 
 

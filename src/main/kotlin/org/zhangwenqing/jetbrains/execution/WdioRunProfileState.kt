@@ -32,10 +32,10 @@ import org.jetbrains.annotations.NotNull
 import org.jetbrains.concurrency.AsyncPromise
 import org.jetbrains.concurrency.Promise
 import org.zhangwenqing.jetbrains.WdioBundle
-import org.zhangwenqing.jetbrains.WdioUtil.FRAMEWORK_CUCUMBER
-import org.zhangwenqing.jetbrains.WdioUtil.FRAMEWORK_JASMINE
-import org.zhangwenqing.jetbrains.WdioUtil.FRAMEWORK_MOCHA
-import org.zhangwenqing.jetbrains.WdioUtil.TEAMCITY_REPORTER_PACKAGE
+import org.zhangwenqing.jetbrains.WdioConstants.FRAMEWORK_CUCUMBER
+import org.zhangwenqing.jetbrains.WdioConstants.FRAMEWORK_JASMINE
+import org.zhangwenqing.jetbrains.WdioConstants.FRAMEWORK_MOCHA
+import org.zhangwenqing.jetbrains.WdioConstants.TEAMCITY_REPORTER_PACKAGE
 import org.zhangwenqing.jetbrains.quickfix.MissingReporterException
 import org.zhangwenqing.jetbrains.quickfix.NOTIFICATION_GROUP_ID
 import java.io.File

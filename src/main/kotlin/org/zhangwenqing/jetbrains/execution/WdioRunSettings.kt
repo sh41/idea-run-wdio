@@ -6,10 +6,10 @@ import com.intellij.javascript.nodejs.interpreter.NodeJsInterpreterRef
 import com.intellij.javascript.nodejs.util.NodePackage
 import com.intellij.openapi.util.io.FileUtil
 import org.jetbrains.annotations.NotNull
-import org.zhangwenqing.jetbrains.WdioUtil
+import org.zhangwenqing.jetbrains.WdioConstants
 
 
-class WdioRunSettings constructor(@NotNull builder: Builder)
+class WdioRunSettings(@NotNull builder: Builder)
 {
 	val interpreterRef: NodeJsInterpreterRef = builder.myInterpreterRef
 	val nodeOptions: String = builder.myNodeOptions
@@ -21,12 +21,6 @@ class WdioRunSettings constructor(@NotNull builder: Builder)
 	val testFilePath: String = FileUtil.toSystemIndependentName(builder.myTestFilePath)
 	val testNames: List<String> = ImmutableList.copyOf(builder.myTestNames) as List<String>
 	var testLineNumbers: List<Int> = ImmutableList.copyOf(builder.myTestLineNumbers) as List<Int>
-
-	companion object
-	{
-		@JvmStatic
-		fun builder(runSettings: WdioRunSettings): Builder = Builder(runSettings)
-	}
 
 	fun builder(): Builder = Builder(this)
 
@@ -51,7 +45,7 @@ class WdioRunSettings constructor(@NotNull builder: Builder)
 			myWorkingDir = ""
 			myEnvData = EnvironmentVariablesData.DEFAULT
 			myWdioConfigFilePath = ""
-			myFramework = WdioUtil.FRAMEWORK_MOCHA
+			myFramework = WdioConstants.FRAMEWORK_MOCHA
 			myTestFilePath = ""
 			myTestNames = ImmutableList.of<String>() as List<String>
 			myTestLineNumbers = ImmutableList.of<Int>() as List<Int>

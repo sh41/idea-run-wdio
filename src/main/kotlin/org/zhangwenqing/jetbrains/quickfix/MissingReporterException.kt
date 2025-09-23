@@ -16,7 +16,7 @@ import com.intellij.openapi.util.text.HtmlBuilder
 import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.webcore.packaging.PackageManagementService
 import org.zhangwenqing.jetbrains.WdioBundle
-import org.zhangwenqing.jetbrains.WdioUtil
+import org.zhangwenqing.jetbrains.WdioConstants
 import java.nio.file.Path
 
 const val NOTIFICATION_GROUP_ID = "WebdriverIO.NotificationGroup"
@@ -45,7 +45,7 @@ class MissingReporterException(
 		installerService.installPackage(
 			project,
 			interpreter,
-			WdioUtil.TEAMCITY_REPORTER_PACKAGE,
+			WdioConstants.TEAMCITY_REPORTER_PACKAGE,
 			null, // version
 			Path.of(installWorkingDirectory),
 			object : PackageManagementService.Listener {
@@ -66,12 +66,14 @@ class MissingReporterException(
 									HtmlChunk.text(
 										JavaScriptBundle.message(
 											"npm.failed_to_install_package.title.message",
-											WdioUtil.TEAMCITY_REPORTER_PACKAGE
+											WdioConstants.TEAMCITY_REPORTER_PACKAGE
 										) + ":"
 									)
 								)
 								.br()
 								.append(HtmlChunk.text(errorDescription.message))
+								.br()
+								.append(HtmlChunk.text("Command: ${errorDescription.command}"))
 								.toString()
 							Notification(NOTIFICATION_GROUP_ID, "Installation failed", html, NotificationType.ERROR)
 								.notify(project)

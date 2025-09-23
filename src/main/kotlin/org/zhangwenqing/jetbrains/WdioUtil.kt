@@ -9,21 +9,16 @@ import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.VirtualFile
 import org.jetbrains.annotations.NotNull
+import org.zhangwenqing.jetbrains.WdioConstants.NODE_PACKAGE_NAME
+import org.zhangwenqing.jetbrains.WdioConstants.WDIO_PACKAGE_DIR__KEY
 
 
 object WdioUtil
 {
 	private val LOG: Logger = Logger.getInstance(WdioUtil::class.java)
-	const val NODE_PACKAGE_NAME = "@wdio/cli"
-	const val TEAMCITY_REPORTER_PACKAGE = "wdio-teamcity-reporter"
 
 	val PACKAGE_DESCRIPTOR: NodePackageDescriptor = NodePackageDescriptor(NODE_PACKAGE_NAME)
 
-	const val WDIO_PACKAGE_DIR__KEY: String = "nodejs.wdio.wdio_node_package_dir"
-
-	const val FRAMEWORK_MOCHA = "Mocha"
-	const val FRAMEWORK_JASMINE = "Jasmine"
-	const val FRAMEWORK_CUCUMBER = "Cucumber"
 
 	@NotNull
 	fun getWdioPackage(@NotNull project: Project): NodePackage

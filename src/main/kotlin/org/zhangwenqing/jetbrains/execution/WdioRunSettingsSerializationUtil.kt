@@ -9,19 +9,18 @@ import com.intellij.openapi.util.text.StringUtil
 import org.jdom.Element
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.Nullable
+import org.zhangwenqing.jetbrains.WdioConstants.FRAMEWORK__KEY
+import org.zhangwenqing.jetbrains.WdioConstants.NODE_INTERPRETER__KEY
+import org.zhangwenqing.jetbrains.WdioConstants.NODE_OPTIONS__KEY
+import org.zhangwenqing.jetbrains.WdioConstants.PASS_PARENT_ENV__KEY
+import org.zhangwenqing.jetbrains.WdioConstants.TEST_FILE__KEY
+import org.zhangwenqing.jetbrains.WdioConstants.TEST_LINE_NUMBERS__KEY
+import org.zhangwenqing.jetbrains.WdioConstants.TEST_NAMES__KEY
+import org.zhangwenqing.jetbrains.WdioConstants.TEST_NAME__KEY
+import org.zhangwenqing.jetbrains.WdioConstants.WDIO_CONFIG_FILE_PATH__KEY
+import org.zhangwenqing.jetbrains.WdioConstants.WDIO_PACKAGE__KEY
+import org.zhangwenqing.jetbrains.WdioConstants.WORKING_DIRECTORY__KEY
 import org.zhangwenqing.jetbrains.WdioUtil
-
-const val NODE_INTERPRETER__KEY = "node-interpreter"
-const val NODE_OPTIONS__KEY = "node-options"
-const val WDIO_PACKAGE___KEY = "wdio-package"
-const val WORKING_DIRECTORY__KEY = "working-directory"
-const val PASS_PARENT_ENV__KEY = "pass-parent-env"
-const val WDIO_CONFIG_FILE_PATH__KEY = "wdio-config-file-path"
-const val FRAMEWORK__KEY = "wdio-framework"
-const val TEST_FILE__KEY = "test-file"
-const val TEST_NAMES__KEY = "test-names"
-const val TEST_LINE_NUMBERS__KEY = "test-line-numbers"
-const val TEST_NAME__KEY = "name"
 
 object WdioRunSettingsSerializationUtil
 {
@@ -37,7 +36,7 @@ object WdioRunSettingsSerializationUtil
 		val nodeOptions: String = readTag(parent, NODE_OPTIONS__KEY)
 		builder.setNodeOptions(nodeOptions)
 
-		val pkg: String? = readTagNullable(parent, WDIO_PACKAGE___KEY)
+		val pkg: String? = readTagNullable(parent, WDIO_PACKAGE__KEY)
 		if (pkg != null)
 		{
 			builder.setWdioPackage(WdioUtil.PACKAGE_DESCRIPTOR.createPackage(pkg))
@@ -102,7 +101,7 @@ object WdioRunSettingsSerializationUtil
 		writeTag(parent, NODE_OPTIONS__KEY, runSettings.nodeOptions)
 		if (runSettings.wdioPackage != null)
 		{
-			writeTag(parent, WDIO_PACKAGE___KEY, runSettings.wdioPackage.systemIndependentPath)
+			writeTag(parent, WDIO_PACKAGE__KEY, runSettings.wdioPackage.systemIndependentPath)
 		}
 		val workingDirPath = FileUtil.toSystemIndependentName(runSettings.workingDir)
 		writeTag(parent, WORKING_DIRECTORY__KEY, workingDirPath)
