@@ -191,6 +191,13 @@ open class WdioRunConfiguration constructor(
 				builder.setWorkingDir(basePath)
 			}
 		}
+
+		if (myRunSettings.wdioConfigFilePath.isBlank()) {
+			WdioUtil.findWdioConfig(project)?.let {
+				builder.setWdioConfigFilePath(it.path)
+			}
+		}
+
 		myRunSettings = builder.build()
 	}
 
