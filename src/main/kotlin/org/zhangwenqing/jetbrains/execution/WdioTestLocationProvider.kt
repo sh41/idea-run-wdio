@@ -27,135 +27,89 @@ private const val SPLIT_CHAR = '.'
 class WdioTestLocationProvider : SMTestLocator
 {
 	override fun getLocation(
-	  protocol: String,
-	  path: String,
-	  project: Project,
-	  scope: GlobalSearchScope
+		protocol: String,
+		path: String,
+		project: Project,
+		scope: GlobalSearchScope
 	): List<Location<PsiElement>>
 	{
 		throw IllegalStateException("Should not be called")
 	}
 
 	override fun getLocation(
-	  protocol: String,
-	  path: String,
-	  @Nullable metaInfo: String?,
-	  project: Project,
-	  scope: GlobalSearchScope
+		protocol: String,
+		path: String,
+		@Nullable metaInfo: String?,
+		project: Project,
+		scope: GlobalSearchScope
 	): List<Location<PsiElement>>
 	{
-		// Check for the custom 'wdio' protocol
-		if (WDIO_PROTOCOL_ID == protocol)
-		{
-			try {
-				// The 'path' from the IDE is the full locationHint string
-				val uri = URI.create(path)
-				val testFilePath = File(project.basePath, uri.path).absolutePath
-				val testName = uri.fragment // The part after '#'
+		if (WDIO_PROTOCOL_ID != protocol) return emptyList()
 
-				if (testFilePath == null || testName == null) {
-					return emptyList()
-				}
-				val location: Location<PsiElement>? = getTestLocation(project, testName, testFilePath)
-			return ContainerUtil.createMaybeSingletonList(location)
-			} catch (_: Exception) {
-				// Log or handle malformed URI
-				return emptyList()
-			}
-		}
-		return emptyList()
+		val location = runCatching {
+			// The 'path' from the IDE is the full locationHint string
+			val uri = URI.create(path)
+			val testFilePath = File(project.basePath, uri.path).absolutePath
+			val testName = uri.fragment ?: return emptyList() // The part after '#'
+			getTestLocation(project, testName, testFilePath)
+		}.getOrNull()
+
+		return ContainerUtil.createMaybeSingletonList(location)
 	}
 
 	private fun getTestLocation(
-	  project: Project,
-	  locationData: String,
-	  testFilePath: String?
+		project: Project,
+		locationData: String,
+		testFilePath: String?
 	): Location<PsiElement>?
 	{
-		var psiElement: PsiElement?
 		val path = EscapeUtils.split(locationData, SPLIT_CHAR)
-		if (path.isEmpty())
-		{
-			return null
-		}
+		if (path.isEmpty()) return null
 
-		psiElement = findJasmineElement(project, path, testFilePath)
+		val psiElement = findTest(project, path, testFilePath) ?: findSuite(project, path, testFilePath)
 
-		if (psiElement == null)
-		{
-			psiElement = findQUnitElement(project, path, testFilePath)
-		}
-
-		if (psiElement == null)
-		{
-			psiElement = findExportsElement(project, path, testFilePath)
-		}
-
-		if (psiElement == null)
-		{
-			psiElement = findTddElement(project, path, testFilePath)
-		}
-
-		return if (psiElement != null)
-		{
-			PsiLocation.fromPsiElement(psiElement)
-		}
-		else null
+		return psiElement?.let { PsiLocation.fromPsiElement(it) }
 	}
 
 	companion object
 	{
-		private fun findElement(
-			project: Project,
-			location: List<String>,
-			testFilePath: String?,
-			interfaceName: String
-		): PsiElement? {
+		private fun findTest(project: Project, location: List<String>, testFilePath: String?): PsiElement? {
 			if (location.isEmpty()) return null
 			val suites = location.subList(0, location.size - 1)
 			val testName = location.last()
-			val testSelector = JsTestSelector(suites, testName)
+			val selector = JsTestSelector(suites, testName)
+			return findElementBySelector(project, testFilePath, selector)
+		}
 
+		private fun findSuite(project: Project, location: List<String>, testFilePath: String?): PsiElement? {
+			if (location.isEmpty()) return null
+			val selector = JsTestSelector(location, null)
+			return findElementBySelector(project, testFilePath, selector)
+		}
+
+		private fun findElementBySelector(
+			project: Project,
+			testFilePath: String?,
+			selector: JsTestSelector
+		): PsiElement? {
 			val virtualFiles = if (testFilePath != null) {
 				listOfNotNull(findFile(testFilePath))
 			} else {
-				MochaDetector.instance.findTestFilesInIndexesBySelector(project, testSelector)
+				MochaDetector.instance.findTestFilesInIndexesBySelector(project, selector)
 			}
 
 			for (file in virtualFiles) {
 				val jsFile = PsiManager.getInstance(project).findFile(file) as? JSFile ?: continue
-				val element =
-					MochaDetector.instance.findPsiElementByProbableInterface(jsFile, interfaceName, testSelector)
-				if (element != null && element.isValid) {
-					return element
+				// Check against different test framework styles
+				for (interfaceName in listOf("jasmine", "qunit", "exports", "mocha-tdd")) {
+					val element =
+						MochaDetector.instance.findPsiElementByProbableInterface(jsFile, interfaceName, selector)
+					if (element != null && element.isValid) {
+						return element
+					}
 				}
 			}
 			return null
-		}
-
-		private fun findJasmineElement(project: Project, location: List<String>, testFilePath: String?): PsiElement? {
-			return findElement(project, location, testFilePath, "jasmine")
-		}
-
-		private fun findQUnitElement(project: Project, location: List<String>, testFilePath: String?): PsiElement?
-		{
-			if (testFilePath == null) return null
-			val newLocation = when
-			{
-				location.size > 1 -> location
-				else -> listOf("Default Module", location[0])
-			}
-			return findElement(project, newLocation, testFilePath, "qunit")
-		}
-
-		private fun findExportsElement(project: Project, location: List<String>, testFilePath: String?): PsiElement?
-		{
-			return findElement(project, location, testFilePath, "exports")
-		}
-
-		private fun findTddElement(project: Project, location: List<String>, testFilePath: String?): PsiElement?
-		{
-			return findElement(project, location, testFilePath, "mocha-tdd")
 		}
 
 		private fun findFile(filePath: String): VirtualFile?
