@@ -11,14 +11,15 @@ import org.jetbrains.annotations.NotNull
 object WdioUtil
 {
 	const val NODE_PACKAGE_NAME = "@wdio/cli"
+	const val TEAMCITY_REPORTER_PACKAGE = "wdio-teamcity-reporter"
 
 	val PACKAGE_DESCRIPTOR: NodePackageDescriptor = NodePackageDescriptor(NODE_PACKAGE_NAME)
 
 	const val WDIO_PACKAGE_DIR__KEY: String = "nodejs.wdio.wdio_node_package_dir"
 
 	const val FRAMEWORK_MOCHA = "Mocha"
-	const val FRAMRWORK_JASMINE = "Jasmine"
-	const val FRAMRWORK_CUCUMBER = "Cucumber"
+	const val FRAMEWORK_JASMINE = "Jasmine"
+	const val FRAMEWORK_CUCUMBER = "Cucumber"
 
 	@NotNull
 	fun getWdioPackage(@NotNull project: Project): NodePackage
@@ -30,6 +31,6 @@ object WdioUtil
 	fun setWdioPackage(project: Project, wdioPackage: NodePackage)
 	{
 		PropertiesComponent.getInstance(project)
-		  .setValue(WDIO_PACKAGE_DIR__KEY, wdioPackage.systemIndependentPath)
+			.setValue(WDIO_PACKAGE_DIR__KEY, wdioPackage.systemIndependentPath)
 	}
 }

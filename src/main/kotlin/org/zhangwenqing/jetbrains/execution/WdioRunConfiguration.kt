@@ -35,20 +35,20 @@ import java.io.File
 
 
 open class WdioRunConfiguration constructor(
-  @NotNull project: Project,
-  @NotNull factory: ConfigurationFactory,
-  @NotNull name: String
+	@NotNull project: Project,
+	@NotNull factory: ConfigurationFactory,
+	@NotNull name: String
 ) :
-  LocatableConfigurationBase<WdioRunConfiguration>(project, factory, name),
-  JSRunProfileWithCompileBeforeLaunchOption,
-  NodeDebugRunConfiguration,
-  PreferableRunConfiguration,
-  SMRunnerConsolePropertiesProvider
+	LocatableConfigurationBase<WdioRunConfiguration>(project, factory, name),
+	JSRunProfileWithCompileBeforeLaunchOption,
+	NodeDebugRunConfiguration,
+	PreferableRunConfiguration,
+	SMRunnerConsolePropertiesProvider
 {
 	private var myRunSettings = WdioRunSettings.Builder().build()
 
 	override fun getConfigurationEditor(): SettingsEditor<out RunConfiguration> =
-	  WdioRunConfigurationEditor(project)
+		WdioRunConfigurationEditor(project)
 
 	@Throws(InvalidDataException::class)
 	override fun readExternal(@NotNull element: Element)
@@ -68,11 +68,11 @@ open class WdioRunConfiguration constructor(
 	override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState?
 	{
 		return WdioRunProfileState(
-		  project,
-		  this,
-		  environment,
-		  getWdioPackage(),
-		  myRunSettings
+			project,
+			this,
+			environment,
+			getWdioPackage(),
+			myRunSettings
 		)
 	}
 
@@ -87,9 +87,9 @@ open class WdioRunConfiguration constructor(
 			val project = project
 			val interpreter = myRunSettings.interpreterRef.resolve(project)
 			pkg = WdioUtil.PACKAGE_DESCRIPTOR.findFirstDirectDependencyPackage(
-			  project,
-			  interpreter,
-			  getContextFile()
+				project,
+				interpreter,
+				getContextFile()
 			)
 			if (pkg.isEmptyPath)
 			{
@@ -104,7 +104,7 @@ open class WdioRunConfiguration constructor(
 		return pkg
 	}
 
-	private fun getContextFile(): VirtualFile?
+	internal fun getContextFile(): VirtualFile?
 	{
 		var f: VirtualFile? = findFile(myRunSettings.testFilePath)
 		if (f == null)

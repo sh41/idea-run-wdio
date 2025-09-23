@@ -18,6 +18,11 @@ import com.intellij.javascript.nodejs.NodeStackTraceFilter
 import com.intellij.javascript.nodejs.debug.NodeDebuggableRunProfileState
 import com.intellij.javascript.nodejs.interpreter.NodeJsInterpreter
 import com.intellij.javascript.nodejs.util.NodePackage
+import com.intellij.javascript.nodejs.util.NodePackageDescriptor
+import com.intellij.notification.Notification
+import com.intellij.notification.NotificationType
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
@@ -26,9 +31,14 @@ import com.intellij.util.execution.ParametersListUtil
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.concurrency.AsyncPromise
 import org.jetbrains.concurrency.Promise
+import org.zhangwenqing.jetbrains.WdioBundle
+import org.zhangwenqing.jetbrains.WdioUtil.FRAMEWORK_CUCUMBER
+import org.zhangwenqing.jetbrains.WdioUtil.FRAMEWORK_JASMINE
 import org.zhangwenqing.jetbrains.WdioUtil.FRAMEWORK_MOCHA
-import org.zhangwenqing.jetbrains.WdioUtil.FRAMRWORK_CUCUMBER
-import org.zhangwenqing.jetbrains.WdioUtil.FRAMRWORK_JASMINE
+import org.zhangwenqing.jetbrains.WdioUtil.TEAMCITY_REPORTER_PACKAGE
+import org.zhangwenqing.jetbrains.quickfix.MissingReporterException
+import org.zhangwenqing.jetbrains.quickfix.NOTIFICATION_GROUP_ID
+import java.io.File
 import java.nio.charset.StandardCharsets
 
 
@@ -47,44 +57,120 @@ class WdioRunProfileState(
 
 		ApplicationManager.getApplication().executeOnPooledThread {
 			try {
-				val processHandler = createProcessHandler(configurator)
+				val interpreter = runSettings.interpreterRef.resolveNotNull(project)
+				val commandLine = createCommandLine(interpreter, configurator)
+
+				// Proactively check for the reporter package before starting the process.
+				val reporterPackage = NodePackageDescriptor(TEAMCITY_REPORTER_PACKAGE).findFirstDirectDependencyPackage(
+					project,
+					interpreter,
+					runConfiguration.getContextFile()
+				)
+
+				if (reporterPackage.isEmptyPath) {
+					// Intelligently find the best directory to run 'npm install' in.
+					val installDir = findInstallWorkingDirectory()
+						?: throw ExecutionException("Cannot find a package.json to install the reporter into.")
+					// If the reporter is not found, fail early with our custom exception.
+					throw MissingReporterException(
+						interpreter = interpreter,
+						env = env,
+						installWorkingDirectory = installDir,
+						commandLine = commandLine
+					)
+				}
+				val processHandler = NodeCommandLineUtil.createProcessHandler(commandLine, false)
 				ProcessTerminatedListener.attach(processHandler)
 
 				ApplicationManager.getApplication().invokeLater {
 					try {
-						val consoleProperties = runConfiguration.createTestConsoleProperties(
-							env.executor,
-							NodeCommandLineUtil.shouldUseTerminalConsole(processHandler)
-						)
-						val consoleView = createSMTRunnerConsoleView(consoleProperties)
-						consoleView.attachToProcess(processHandler)
-
-						val rerunAction = consoleProperties.createRerunFailedTestsAction(consoleView)
-						val actions = if (rerunAction != null) arrayOf(rerunAction) else emptyArray()
-
-						val executionResult = DefaultExecutionResult(consoleView, processHandler, *actions)
+						val executionResult = createExecutionResult(processHandler)
 						promise.setResult(executionResult)
 					} catch (e: Exception) {
 						promise.setError(e)
 					}
 				}
 			} catch (e: ExecutionException) {
-				promise.setError(e)
+				// Any exception before the process starts is handled by showing a notification.
+				ApplicationManager.getApplication().invokeLater {
+					handleSetupError(e, promise)
+				}
 			}
 		}
-
 		return promise
 	}
 
+	private fun handleSetupError(e: ExecutionException, promise: AsyncPromise<ExecutionResult>) {
+		val notification = Notification(
+			NOTIFICATION_GROUP_ID,
+			"WebdriverIO run error",
+			e.message ?: "An unknown error occurred.",
+			NotificationType.ERROR
+		)
+
+		// If it's our specific exception for the missing reporter, add the "Install" action.
+		if (e is MissingReporterException) {
+			notification.addAction(object : AnAction(WdioBundle.message("wdio.quickfix.install.reporter.link.text")) {
+				override fun actionPerformed(event: AnActionEvent) {
+					e.navigate(project)
+					notification.expire() // Hide notification after click
+				}
+			})
+		}
+
+		notification.notify(project)
+
+		// Fulfill the promise with null. This signals to the IDE that the run has
+		// failed to start, so no test runner or console should be shown.
+		promise.setResult(null)
+	}
+
+	private fun createExecutionResult(processHandler: ProcessHandler): ExecutionResult {
+		val consoleProperties = runConfiguration.createTestConsoleProperties(
+			env.executor,
+			NodeCommandLineUtil.shouldUseTerminalConsole(processHandler)
+		)
+		val consoleView = createSMTRunnerConsoleView(consoleProperties)
+		consoleView.attachToProcess(processHandler)
+
+		val rerunAction = consoleProperties.createRerunFailedTestsAction(consoleView)
+		val actions = if (rerunAction != null) arrayOf(rerunAction) else emptyArray()
+
+		return DefaultExecutionResult(consoleView, processHandler, *actions)
+	}
+
+	/**
+	 * Intelligently finds the best directory to run 'npm install' in by checking for a package.json file.
+	 * It first checks the run configuration's working directory, then falls back to the project's base directory.
+	 */
+	private fun findInstallWorkingDirectory(): String? {
+		val workingDir = runSettings.workingDir
+		if (workingDir.isNotBlank()) {
+			val packageJsonInWorkingDir = File(workingDir, "package.json")
+			if (packageJsonInWorkingDir.isFile) {
+				return workingDir
+			}
+		}
+		val projectBaseDir = project.basePath
+		if (projectBaseDir != null) {
+			val packageJsonInProjectRoot = File(projectBaseDir, "package.json")
+			if (packageJsonInProjectRoot.isFile) {
+				return projectBaseDir
+			}
+		}
+		return null
+	}
+
 	@Throws(ExecutionException::class)
-	private fun createProcessHandler(configurator: CommandLineDebugConfigurator?): ProcessHandler
-	{
-		val interpreter: NodeJsInterpreter = this.runSettings.interpreterRef.resolveNotNull(this.project)
+	private fun createCommandLine(
+		interpreter: NodeJsInterpreter,
+		configurator: CommandLineDebugConfigurator?
+	): GeneralCommandLine {
 		val commandLine = NodeCommandLineUtil.createCommandLineForTestTools()
 		NodeCommandLineUtil.configureCommandLine(commandLine, configurator, interpreter) {
 			configureCommandLine(commandLine, interpreter, it)
 		}
-		return NodeCommandLineUtil.createProcessHandler(commandLine, false)
+		return commandLine
 	}
 
 	private fun createSMTRunnerConsoleView(consoleProperties: WdioConsoleProperties): ConsoleView
@@ -147,11 +233,12 @@ class WdioRunProfileState(
 				{
 					commandLine.addParameter("--mochaOpts.timeout")
 				}
-				FRAMRWORK_JASMINE ->
+				FRAMEWORK_JASMINE ->
 				{
 					commandLine.addParameter("--jasmineOpts.defaultTimeoutInterval")
 				}
-				FRAMRWORK_CUCUMBER ->
+
+				FRAMEWORK_CUCUMBER ->
 				{
 					commandLine.addParameter("--cucumberOpts.timeout")
 				}

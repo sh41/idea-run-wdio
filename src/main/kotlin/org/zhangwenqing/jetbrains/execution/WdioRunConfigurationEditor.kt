@@ -8,18 +8,20 @@ import com.intellij.lang.javascript.JavaScriptBundle
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
-import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.SettingsEditor
 import com.intellij.openapi.options.ex.SingleConfigurableEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.DialogWrapper
+import com.intellij.openapi.ui.TextBrowseFolderListener
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.ui.RawCommandLineEditor
 import com.intellij.ui.components.fields.CommaSeparatedIntegersField
 import com.intellij.ui.components.fields.ExpandableTextField
-import com.intellij.util.ui.*
+import com.intellij.util.ui.ComponentWithEmptyText
+import com.intellij.util.ui.FormBuilder
+import com.intellij.util.ui.SwingHelper
 import com.intellij.webcore.ui.PathShortener
 import org.jetbrains.annotations.NotNull
 import org.zhangwenqing.jetbrains.WdioBundle
@@ -29,8 +31,8 @@ import javax.swing.JPanel
 
 const val PANEL_TOP = 8
 
-class WdioRunConfigurationEditor constructor(
-  @NotNull private val project: Project
+class WdioRunConfigurationEditor(
+	@param:NotNull private val project: Project
 ) : SettingsEditor<WdioRunConfiguration>()
 {
 	private val myNodeInterpreterField = NodeJsInterpreterField(project, false)
@@ -39,50 +41,50 @@ class WdioRunConfigurationEditor constructor(
 	private val myEnvironmentVariablesTextFieldWithBrowseButton = EnvironmentVariablesTextFieldWithBrowseButton()
 	private val myWdioPackageField = NodePackageField(myNodeInterpreterField, WdioUtil.PACKAGE_DESCRIPTOR, null)
 	private val myWdioConfigFiledWithBrowseButton = createWdioConfigFileTextField(project)
-	private val myFrameworkField = createFrameworkFieldEditor(project)
+	private val myFrameworkField = createFrameworkFieldEditor()
 	private val myTestFileTextFieldWithBrowseButton = createTestFileTextField(project)
 	private val myTestLineNumbersEditor = CommaSeparatedIntegersField()
 	private val myComponent = FormBuilder()
-	  .setAlignLabelOnRight(false)
-	  .addLabeledComponent(
-		NodeJsInterpreterField.getLabelTextForComponent(),
-		(myNodeInterpreterField as JComponent)
-	  )
-	  .addLabeledComponent(
-		JavaScriptBundle.message("rc.nodeOptions.label"),
-		(myNodeOptions as JComponent)
-	  )
-	  .addLabeledComponent(
-		JavaScriptBundle.message("rc.workingDirectory.label"),
-		(myWorkingDirTextFieldWithBrowseButton as JComponent)
-	  )
-	  .addLabeledComponent(
-		JavaScriptBundle.message("rc.environmentVariables.label"),
-		(myEnvironmentVariablesTextFieldWithBrowseButton as JComponent)
-	  )
-	  .addLabeledComponent(
-		WdioBundle.message("wdio.run.package.label"),
-		(myWdioPackageField as JComponent)
-	  )
-	  .addLabeledComponent(
-		WdioBundle.message("wdio.run.config.label"),
-		(myWdioConfigFiledWithBrowseButton as JComponent)
-	  )
-	  .addLabeledComponent(
-		WdioBundle.message("wdio.run.framework.label"),
-		(myFrameworkField as JComponent)
-	  )
-	  .addLabeledComponent(
-		JavaScriptBundle.message("rc.testRunScope.testFile.label"),
-		(myTestFileTextFieldWithBrowseButton as JComponent)
-	  )
-	  .addLabeledComponent(
-		WdioBundle.message("wdio.run.test.line.numbers.label"),
-		(myTestLineNumbersEditor as JComponent)
-	  )
-	  .addSeparator(PANEL_TOP)
-	  .addComponentFillVertically(JPanel(), 0)
-	  .panel
+		.setAlignLabelOnRight(false)
+		.addLabeledComponent(
+			NodeJsInterpreterField.getLabelTextForComponent(),
+			(myNodeInterpreterField as JComponent)
+		)
+		.addLabeledComponent(
+			JavaScriptBundle.message("rc.nodeOptions.label"),
+			(myNodeOptions as JComponent)
+		)
+		.addLabeledComponent(
+			JavaScriptBundle.message("rc.workingDirectory.label"),
+			(myWorkingDirTextFieldWithBrowseButton as JComponent)
+		)
+		.addLabeledComponent(
+			JavaScriptBundle.message("rc.environmentVariables.label"),
+			(myEnvironmentVariablesTextFieldWithBrowseButton as JComponent)
+		)
+		.addLabeledComponent(
+			WdioBundle.message("wdio.run.package.label"),
+			(myWdioPackageField as JComponent)
+		)
+		.addLabeledComponent(
+			WdioBundle.message("wdio.run.config.label"),
+			(myWdioConfigFiledWithBrowseButton as JComponent)
+		)
+		.addLabeledComponent(
+			WdioBundle.message("wdio.run.framework.label"),
+			(myFrameworkField as JComponent)
+		)
+		.addLabeledComponent(
+			JavaScriptBundle.message("rc.testRunScope.testFile.label"),
+			(myTestFileTextFieldWithBrowseButton as JComponent)
+		)
+		.addLabeledComponent(
+			WdioBundle.message("wdio.run.test.line.numbers.label"),
+			(myTestLineNumbersEditor as JComponent)
+		)
+		.addSeparator(PANEL_TOP)
+		.addComponentFillVertically(JPanel(), 0)
+		.panel
 
 	override fun resetEditorFrom(configuration: WdioRunConfiguration)
 	{
@@ -132,30 +134,27 @@ class WdioRunConfigurationEditor constructor(
 		}
 	}
 
-	private fun createFrameworkFieldEditor(project: Project): ComboBox<String>
+	private fun createFrameworkFieldEditor(): ComboBox<String>
 	{
-		val combo = ComboBox(arrayOf(WdioUtil.FRAMEWORK_MOCHA, WdioUtil.FRAMRWORK_JASMINE, WdioUtil.FRAMRWORK_CUCUMBER))
-		//TODO: auto detect current framework by installed framework packages
-		// combo.item = detectFramework(project) ?? WdioUtil.FRAMEWORK_MOCHA
-		return combo
+		return ComboBox(arrayOf(WdioUtil.FRAMEWORK_MOCHA, WdioUtil.FRAMEWORK_JASMINE, WdioUtil.FRAMEWORK_CUCUMBER))
 	}
 
 
 	companion object
 	{
 		private fun createWorkingDirTextField(project: Project): TextFieldWithBrowseButton =
-		  createTextFieldWithBrowseButton(
-			project,
-			JavaScriptBundle.message("rc.workingDirectory.browseDialogTitle"),
-			FileChooserDescriptorFactory.createSingleFolderDescriptor()
-		  )
+			createTextFieldWithBrowseButton(
+				project,
+				JavaScriptBundle.message("rc.workingDirectory.browseDialogTitle"),
+				FileChooserDescriptor(false, true, false, false, false, false)
+			)
 
 		private fun createWdioConfigFileTextField(project: Project): TextFieldWithBrowseButton
 		{
 			val textFieldWithBrowseButton = createTextFieldWithBrowseButton(
-			  project,
-			  WdioBundle.message("wdio.run.config.workingDirectory.browseDialogTitle"),
-			  FileChooserDescriptorFactory.createSingleFileDescriptor()
+				project,
+				WdioBundle.message("wdio.run.config.workingDirectory.browseDialogTitle"),
+				FileChooserDescriptor(true, false, false, false, false, false)
 			)
 			val field = textFieldWithBrowseButton.textField
 			(field as? ExpandableTextField)?.putClientProperty("monospaced", false)
@@ -167,25 +166,21 @@ class WdioRunConfigurationEditor constructor(
 		}
 
 		private fun createTestFileTextField(project: Project): TextFieldWithBrowseButton =
-		  createTextFieldWithBrowseButton(
-			project,
-			JavaScriptBundle.message("rc.testRunScope.testFile.browseTitle"),
-			FileChooserDescriptorFactory.createSingleFileDescriptor()
-		  )
+			createTextFieldWithBrowseButton(
+				project,
+				JavaScriptBundle.message("rc.testRunScope.testFile.browseTitle"),
+				FileChooserDescriptor(true, false, false, false, false, false)
+			)
 
 		private fun createTextFieldWithBrowseButton(
-		  project: Project,
-		  dialogTitle: String,
-		  chooseDescription: FileChooserDescriptor
+			project: Project,
+			dialogTitle: String,
+			chooseDescription: FileChooserDescriptor
 		): TextFieldWithBrowseButton
 		{
 			val textFieldWithBrowseButton = TextFieldWithBrowseButton()
-			SwingHelper.installFileCompletionAndBrowseDialog(
-			  project,
-			  textFieldWithBrowseButton,
-			  dialogTitle,
-			  chooseDescription
-			)
+			val descriptor = chooseDescription.withTitle(dialogTitle)
+			textFieldWithBrowseButton.addBrowseFolderListener(TextBrowseFolderListener(descriptor, project))
 			PathShortener.enablePathShortening(textFieldWithBrowseButton.textField, null)
 			return textFieldWithBrowseButton
 		}
